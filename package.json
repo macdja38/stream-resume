@@ -1,0 +1,30 @@
+{
+  "name": "stream-resume",
+  "version": "0.0.1",
+  "description": "http.get but with resuming for streams",
+  "main": "index.js",
+  "dependencies": {
+    "longjohn": "^0.2.12"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/macdja38/stream-resume.git"
+  },
+  "keywords": [
+    "stream",
+    "resume",
+    "http",
+    "get",
+    "request"
+  ],
+  "author": "macdja38",
+  "license": "UNLICENCED",
+  "bugs": {
+    "url": "https://github.com/macdja38/stream-resume/issues"
+  },
+  "homepage": "https://github.com/macdja38/stream-resume#readme"
+}
