@@ -92,6 +92,8 @@ streamResume.request = function (options, callback) {
   return https.get(options, newCallback).once("error", outputStream._errorListener);
 };
 
+module.exports = streamResume;
+
 /*
 streamResume.request("url here",
   (res) => {
