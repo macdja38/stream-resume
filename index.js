@@ -54,10 +54,8 @@ class OutputStream extends Readable {
 
   _errorListener(error) {
     // console.error("Caught", error);
-    try {
+    if (this.res) {
       this._removeListeners();
-    } catch (e) {
-      this.emit('error', e);
     }
     if (this._retries + 1 > this._maxRetries) {
       return this._endListener();
@@ -127,9 +125,9 @@ streamResume.request = function (options, callback) {
   let outputStream = new OutputStream({}, requestOptions);
   // console.log(requestOptions);
   let newCallback = (res) => {
-    console.log(`HEADERS: ${res.headers["content-length"]}`);
+    // console.log(`HEADERS: ${res.headers["content-length"]}`);
     outputStream.insertRes(res, res.headers["content-length"]);
-    callback(null, outputStream);
+    callback(outputStream);
   };
   return https.get(options, newCallback).once("error", outputStream._errorListener);
 };
