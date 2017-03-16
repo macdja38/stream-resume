@@ -10,7 +10,7 @@ let Readable = stream.Readable;
 
 let streamResume = {};
 Object.assign(streamResume, https);
-let file = require("fs").createWriteStream('file.webm');
+// let file = require("fs").createWriteStream('file.webm');
 
 // let longjohn = require("longjohn");
 
@@ -18,7 +18,8 @@ class OutputStream extends Readable {
   constructor(options, httpOptions) {
     super(options);
     this._httpOptions = httpOptions;
-
+    this._maxRetries = options.maxRetries;
+    this._retries = 0;
     this._initialOffset = httpOptions.headers.Range ? parseRange(httpOptions.headers.Range).from : 0;
 
     this._endListener = this._endListener.bind(this);
@@ -52,20 +53,28 @@ class OutputStream extends Readable {
   }
 
   _errorListener(error) {
-    console.error("Caught", error);
-    this._removeListeners();
+    // console.error("Caught", error);
+    try {
+      this._removeListeners();
+    } catch (e) {
+      this.emit('error', e);
+    }
+    if (this._retries + 1 > this._maxRetries) {
+      return this._endListener();
+    }
     let resolveRes;
     this._resDead = new Promise((resolve, reject) => {
       resolveRes = resolve;
     });
     this._httpOptions.headers.Range = `bytes=${this._bytesSoFar + this._initialOffset}-`;
-    console.log("re-requesting", this._httpOptions);
+    // console.log("re-requesting", this._httpOptions);
+    this._retries += 1;
     this._currentRequest = https.get(this._httpOptions,
       (res) => {
         this.res = res;
         this._addListeners();
         this._resDead = false;
-        console.log("New Res");
+        // console.log("New Res");
         resolveRes(res);
       }
     );
@@ -73,7 +82,7 @@ class OutputStream extends Readable {
   }
 
   _endListener() {
-    console.log("End fired");
+    // console.log("End fired");
     this.push(null);
     this._removeListeners();
   }
@@ -81,19 +90,20 @@ class OutputStream extends Readable {
   _dataListener(data) {
     if (this._resDead) return;
     this._bytesSoFar += data.length;
-    console.log(this._bytesSoFar, data);
+    // console.log(this._bytesSoFar, data);
     if (!this.push(data)) {
-      console.log("Paused data input");
+      // console.log("Paused data input");
       this.res.pause();
     }
   }
 
   _read(size) {
-    console.log(size);
+    // console.log(size);
     if (this._resDead) {
       this._resDead.then(() => {
         this.res.read(size);
-      }).catch(() => {});
+      }).catch(() => {
+      });
     } else {
       this.res.read(size);
     }
@@ -110,13 +120,16 @@ streamResume.request = function (options, callback) {
   if (!requestOptions.hasOwnProperty("headers")) {
     requestOptions.headers = {};
   }
+  if (!requestOptions.hasOwnProperty("maxRequests")) {
+    requestOptions.maxRetries = 3;
+  }
   requestOptions.method = "GET";
   let outputStream = new OutputStream({}, requestOptions);
-  console.log(requestOptions);
+  // console.log(requestOptions);
   let newCallback = (res) => {
     console.log(`HEADERS: ${res.headers["content-length"]}`);
     outputStream.insertRes(res, res.headers["content-length"]);
-    callback(outputStream);
+    callback(null, outputStream);
   };
   return https.get(options, newCallback).once("error", outputStream._errorListener);
 };
