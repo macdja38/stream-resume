@@ -19,12 +19,19 @@ class OutputStream extends Readable {
     super(options);
     this._httpOptions = httpOptions;
 
+    this._initialOffset = httpOptions.headers.Range ? parseRange(httpOptions.headers.Range).from : 0;
+
     this._endListener = this._endListener.bind(this);
     this._dataListener = this._dataListener.bind(this);
     this._errorListener = this._errorListener.bind(this);
+
+    this._bytesSoFar = 0;
+
+    this._resDead = false;
   }
 
-  insertRes(res) {
+  insertRes(res, contentLength) {
+    this._contentLength = contentLength;
     this.res = res;
     this._addListeners();
   }
@@ -47,30 +54,49 @@ class OutputStream extends Readable {
   _errorListener(error) {
     console.error("Caught", error);
     this._removeListeners();
+    let resolveRes;
+    this._resDead = new Promise((resolve, reject) => {
+      resolveRes = resolve;
+    });
+    this._httpOptions.headers.Range = `bytes=${this._bytesSoFar + this._initialOffset}-`;
+    console.log("re-requesting", this._httpOptions);
     this._currentRequest = https.get(this._httpOptions,
       (res) => {
         this.res = res;
         this._addListeners();
-        console.log(res);
+        this._resDead = false;
+        console.log("New Res");
+        resolveRes(res);
       }
     );
     this._currentRequest.on("error", this._errorListener);
   }
 
   _endListener() {
+    console.log("End fired");
     this.push(null);
     this._removeListeners();
   }
 
   _dataListener(data) {
+    if (this._resDead) return;
+    this._bytesSoFar += data.length;
+    console.log(this._bytesSoFar, data);
     if (!this.push(data)) {
+      console.log("Paused data input");
       this.res.pause();
     }
   }
 
   _read(size) {
     console.log(size);
-    this.res.read(size);
+    if (this._resDead) {
+      this._resDead.then(() => {
+        this.res.read(size);
+      }).catch(() => {});
+    } else {
+      this.res.read(size);
+    }
   }
 }
 
@@ -81,26 +107,47 @@ streamResume.request = function (options, callback) {
   } else {
     Object.assign(requestOptions, options);
   }
+  if (!requestOptions.hasOwnProperty("headers")) {
+    requestOptions.headers = {};
+  }
   requestOptions.method = "GET";
   let outputStream = new OutputStream({}, requestOptions);
   console.log(requestOptions);
   let newCallback = (res) => {
-    console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
-    outputStream.insertRes(res);
+    console.log(`HEADERS: ${res.headers["content-length"]}`);
+    outputStream.insertRes(res, res.headers["content-length"]);
     callback(outputStream);
   };
   return https.get(options, newCallback).once("error", outputStream._errorListener);
 };
 
+function parseRange(text) {
+  let from = "";
+  let to = "";
+  let mode = 0;
+  for (let char of text) {
+    if (char === "=") {
+      mode = 1;
+    } else if (char === "-") {
+      mode = 2
+    } else if (mode === 1) {
+      from += char;
+    } else if (mode === 2) {
+      to += char
+    }
+  }
+  return {from: parseInt(from), to: parseInt(to)}
+}
+
 module.exports = streamResume;
 
 /*
-streamResume.request("url here",
-  (res) => {
-    setInterval(() => {
-      console.log(res.read(1000))
-    }, 100);
-    console.log(res)
-  }
-);
+ streamResume.request("url here",
+ (res) => {
+ setInterval(() => {
+ console.log(res.read(1000))
+ }, 100);
+ console.log(res)
+ }
+ );
  */
