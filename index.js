@@ -6,13 +6,79 @@
 let https = require("https");
 let url = require("url");
 let stream = require("stream");
+let EventEmitter = require("events").EventEmitter;
 let Readable = stream.Readable;
 
 let streamResume = {};
 Object.assign(streamResume, https);
-// let file = require("fs").createWriteStream('file.webm');
 
 // let longjohn = require("longjohn");
+
+class RebindableEmitter extends EventEmitter {
+  constructor(currentEmitter) {
+    super();
+    this._onNewListener = this._onNewListener.bind(this);
+    this._onRemoveListener = this._onRemoveListener.bind(this);
+    this._activeEvents = [];
+    this._filteredEvents = [];
+    this._currentEmitter = currentEmitter;
+    this.on("newListener", this._onNewListener);
+    this.on("removeListener", this._onRemoveListener);
+  }
+
+  bindTo(emitter) {
+    let oldEmitter = this._currentEmitter;
+    this._currentEmitter = emitter;
+    this._activeEvents.forEach((name) => {
+      oldEmitter.listeners(name).forEach((listener) => {
+        this._currentEmitter.on(name, listener);
+      });
+      oldEmitter.removeAllListeners(name);
+    });
+  }
+
+  addFilter(name, filterFunction) {
+    if (!this._filteredEvents.includes(name)) {
+      this._filteredEvents.push(name);
+    }
+    this._currentEmitter.listeners(name).forEach((listener) => {
+      this.on(name, listener);
+    });
+    this._currentEmitter.removeAllListeners(name);
+    this._currentEmitter.on(name, (data) => {if (filterFunction(data) === true) {this.emit(name, data)}});
+  }
+
+  _onNewListener(name, listener) {
+    console.log(listener, this._onNewListener);
+    if (listener === this._onNewListener) return;
+    if (!this._activeEvents.includes(name)) {
+      this._activeEvents.push(name);
+    }
+    if (this._filteredEvents.includes(name)) {
+      this.on(name, listener);
+    } else {
+      this._currentEmitter.on(name, listener);
+    }
+  }
+
+  _onRemoveListener(name, listener) {
+    if (this._activeEvents.includes(name)) {
+      this._activeEvents = this._activeEvents.splice(this._activeEvents.indexOf(name), 1);
+    }
+    this._currentEmitter.removeListener(name, listener);
+  }
+}
+
+class ResSubstitute extends RebindableEmitter {
+  constructor(res) {
+    super(res);
+    this._res = res;
+  }
+
+  end() {
+    this._res.end();
+  }
+}
 
 class OutputStream extends Readable {
   constructor(options, httpOptions) {
@@ -31,10 +97,20 @@ class OutputStream extends Readable {
     this._resDead = false;
   }
 
+  /**
+   * Inserts an http client request
+   * @param {ClientRequest} res
+   * @param {number} contentLength
+   */
   insertRes(res, contentLength) {
     this._contentLength = contentLength;
     this.res = res;
     this._addListeners();
+  }
+
+  insertEmitter(emitter) {
+    this._emiter = emitter;
+    this._emiter.addFilter("error", this._errorListener);
   }
 
   _removeListeners() {
@@ -52,13 +128,25 @@ class OutputStream extends Readable {
     this.res.on("error", this._errorListener);
   }
 
+  /**
+   *
+   * @param error
+   * @returns {boolean}
+   * @private
+   */
   _errorListener(error) {
-    // console.error("Caught", error);
+    console.error("Caught", error.toString());
     if (this.res) {
       this._removeListeners();
     }
+    if (this._bytesSoFar + this._initialOffset > this._contentLength) {
+      this._endListener();
+      return true;
+    }
+    if (error.toString() !== "Error: read ECONNRESET") return true;
     if (this._retries + 1 > this._maxRetries) {
-      return this._endListener();
+      this._endListener();
+      return true;
     }
     let resolveRes;
     this._resDead = new Promise((resolve, reject) => {
@@ -70,6 +158,7 @@ class OutputStream extends Readable {
     this._currentRequest = https.get(this._httpOptions,
       (res) => {
         this.res = res;
+        this._emiter.bindTo(res);
         this._addListeners();
         this._resDead = false;
         // console.log("New Res");
@@ -77,6 +166,7 @@ class OutputStream extends Readable {
       }
     );
     this._currentRequest.on("error", this._errorListener);
+    return false;
   }
 
   _endListener() {
@@ -118,10 +208,9 @@ streamResume.request = function (options, callback) {
   if (!requestOptions.hasOwnProperty("headers")) {
     requestOptions.headers = {};
   }
-  if (!requestOptions.hasOwnProperty("maxRequests")) {
+  if (!requestOptions.hasOwnProperty("maxRetries")) {
     requestOptions.maxRetries = 3;
   }
-  requestOptions.method = "GET";
   let outputStream = new OutputStream({}, requestOptions);
   // console.log(requestOptions);
   let newCallback = (res) => {
@@ -129,7 +218,15 @@ streamResume.request = function (options, callback) {
     outputStream.insertRes(res, res.headers["content-length"]);
     callback(outputStream);
   };
-  return https.get(options, newCallback).once("error", outputStream._errorListener);
+  let emitter = new ResSubstitute(https.request(options, newCallback));
+  outputStream.insertEmitter(emitter);
+  return emitter;
+};
+
+streamResume.get = function (options, callback) {
+  let req = streamResume.request(options, callback);
+  req.end();
+  return req;
 };
 
 function parseRange(text) {
