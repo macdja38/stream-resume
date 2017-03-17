@@ -21,6 +21,9 @@
     "get",
     "request"
   ],
+  "files": [
+    "index.js"
+  ],
   "author": "macdja38",
   "license": "UNLICENCED",
   "bugs": {
