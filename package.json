@@ -1,11 +1,9 @@
 {
   "name": "stream-resume",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "http.get but with resuming for streams",
   "main": "index.js",
-  "dependencies": {
-    "longjohn": "^0.2.12"
-  },
+  "dependencies": {},
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

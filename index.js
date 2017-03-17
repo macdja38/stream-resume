@@ -21,6 +21,7 @@ class RebindableEmitter extends EventEmitter {
     this._onRemoveListener = this._onRemoveListener.bind(this);
     this._activeEvents = [];
     this._filteredEvents = [];
+    this._removingListener = false;
     this._currentEmitter = currentEmitter;
     this.on("newListener", this._onNewListener);
     this.on("removeListener", this._onRemoveListener);
@@ -45,23 +46,28 @@ class RebindableEmitter extends EventEmitter {
       this.on(name, listener);
     });
     this._currentEmitter.removeAllListeners(name);
-    this._currentEmitter.on(name, (data) => {if (filterFunction(data) === true) {this.emit(name, data)}});
+    this._currentEmitter.on(name, (data) => {
+      if (filterFunction(data) === true) {
+        this.emit(name, data)
+      }
+    });
   }
 
   _onNewListener(name, listener) {
-    console.log(listener, this._onNewListener);
+    // console.log(listener, this._onNewListener);
     if (listener === this._onNewListener) return;
     if (!this._activeEvents.includes(name)) {
       this._activeEvents.push(name);
     }
-    if (this._filteredEvents.includes(name)) {
-      this.on(name, listener);
-    } else {
-      this._currentEmitter.on(name, listener);
-    }
+    if (this._filteredEvents.includes(name)) return;
+    this._removingListener = true;
+    this.removeListener(name, listener);
+    this._removingListener = false;
+    this._currentEmitter.on(name, listener);
   }
 
   _onRemoveListener(name, listener) {
+    if (this._removingListener) return;
     if (this._activeEvents.includes(name)) {
       this._activeEvents = this._activeEvents.splice(this._activeEvents.indexOf(name), 1);
     }
