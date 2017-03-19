@@ -130,7 +130,7 @@ class OutputStream extends Readable {
   constructor(options, httpOptions) {
     super(options);
     this._httpOptions = httpOptions;
-    this._maxRetries = options.maxRetries;
+    this._maxRetries = httpOptions.maxRetries;
     this._retries = 0;
     this._initialOffset = httpOptions.headers.Range ? parseRange(httpOptions.headers.Range).from : 0;
 
@@ -202,18 +202,19 @@ class OutputStream extends Readable {
       return true;
     }
     if (error.toString() !== "Error: read ECONNRESET") return true;
-    if (this._retries + 1 > this._maxRetries) {
+    // console.log(this._retries, this._maxRetries);
+    this._retries += 1;
+    if (this._retries > this._maxRetries) {
       this._endListener();
       return true;
     }
     this._emitter.emit("warn", error);
     let resolveRes;
-    this._resDead = new Promise((resolve, reject) => {
+    this._resDead = new Promise((resolve) => {
       resolveRes = resolve;
     });
     this._httpOptions.headers.Range = `bytes=${this._bytesSoFar + this._initialOffset}-`;
     // console.log("re-requesting", this._httpOptions);
-    this._retries += 1;
     this._currentRequest = https.get(this._httpOptions,
       (res) => {
         this.res = res;
