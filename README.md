@@ -17,3 +17,5 @@ URL's will have to be parsed with url.parse() before the maxRetries can be modif
 
 Because of the way the library abstracts over the ClientRequest object at the moment actions to the client request will
 not properly carry through to the current request.
+
+Includes unit testing for the RebindableEventEmitter class. Run the test with `npm run test`

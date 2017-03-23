@@ -26,7 +26,6 @@ class RebindableEmitter extends EventEmitter {
     this._onRemoveListener = this._onRemoveListener.bind(this);
     this._activeEvents = [];
     this._filteredEvents = [];
-    this._removingListener = false;
     this._currentEmitter = currentEmitter;
     this.on("newListener", this._onNewListener);
     this.on("removeListener", this._onRemoveListener);
@@ -57,9 +56,6 @@ class RebindableEmitter extends EventEmitter {
     if (!this._filteredEvents.includes(name)) {
       this._filteredEvents.push(name);
     }
-    this._currentEmitter.listeners(name).forEach((listener) => {
-      this.on(name, listener);
-    });
     this._currentEmitter.removeAllListeners(name);
     this._currentEmitter.on(name, (data) => {
       if (filterFunction(data) === true) {
@@ -75,15 +71,11 @@ class RebindableEmitter extends EventEmitter {
    * @private
    */
   _onNewListener(name, listener) {
-    // console.log(listener, this._onNewListener);
     if (listener === this._onNewListener) return;
     if (!this._activeEvents.includes(name)) {
       this._activeEvents.push(name);
     }
     if (this._filteredEvents.includes(name)) return;
-    this._removingListener = true;
-    this.removeListener(name, listener);
-    this._removingListener = false;
     this._currentEmitter.on(name, listener);
   }
 
@@ -94,8 +86,7 @@ class RebindableEmitter extends EventEmitter {
    * @private
    */
   _onRemoveListener(name, listener) {
-    if (this._removingListener) return;
-    if (this._activeEvents.includes(name)) {
+    if (this._activeEvents.includes(name) && this.listenerCount(name) < 2) {
       this._activeEvents = this._activeEvents.splice(this._activeEvents.indexOf(name), 1);
     }
     this._currentEmitter.removeListener(name, listener);
@@ -338,6 +329,8 @@ function parseRange(text) {
 }
 
 module.exports = streamResume;
+
+module.exports.RebindableEmitter = RebindableEmitter;
 
 /*
  streamResume.request("url here",
