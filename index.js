@@ -188,12 +188,24 @@ class OutputStream extends Readable {
     if (this.res) {
       this._removeListeners();
     }
-    if (this._bytesSoFar + this._initialOffset > this._contentLength) {
+    if (this._bytesSoFar + this._initialOffset >= this._contentLength) {
       this._endListener();
       return true;
     }
-    if (error.toString() !== "Error: read ECONNRESET") return true;
+    if (error.toString() !== "Error: read ECONNRESET") {
+      this._endListener();
+      return true;
+    }
     // console.log(this._retries, this._maxRetries);
+    return this._retry(error);
+  }
+
+  /**
+   * Starts a retry cycle (or ends if max retries has been met)
+   * @returns {boolean} true if retry was canceled
+   * @private
+   */
+  _retry(error) {
     this._retries += 1;
     if (this._retries > this._maxRetries) {
       this._endListener();
@@ -237,6 +249,13 @@ class OutputStream extends Readable {
    */
   _dataListener(data) {
     if (this._resDead) return;
+
+    // retry if not all data has been fetched
+    if (this._bytesSoFar + this._initialOffset < this._contentLength) {
+      this._retry(new Error("received null data before end"));
+      return true;
+    }
+
     this._bytesSoFar += data.length;
     // console.log(this._bytesSoFar, data);
     if (!this.push(data)) {
