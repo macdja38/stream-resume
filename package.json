@@ -1,6 +1,6 @@
 {
   "name": "stream-resume",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "http.get but with resuming for streams",
   "main": "index.js",
   "dependencies": {},

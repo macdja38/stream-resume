@@ -159,6 +159,7 @@ class OutputStream extends Readable {
    * @private
    */
   _removeListeners() {
+    // console.log("removing Listeners");
     this.res.removeListener("data", this._dataListener);
     this.res.removeListener("end", this._endListener);
     this.res.removeListener("error", this._errorListener);
@@ -172,6 +173,7 @@ class OutputStream extends Readable {
    * @private
    */
   _addListeners() {
+    // console.log("adding listeners");
     this.res.on("data", this._dataListener);
     this.res.on("end", this._endListener);
     this.res.on("error", this._errorListener);
@@ -206,6 +208,7 @@ class OutputStream extends Readable {
    * @private
    */
   _retry(error) {
+    // console.log("retrying due to ", error);
     this._retries += 1;
     if (this._retries > this._maxRetries) {
       this._endListener();
@@ -251,7 +254,7 @@ class OutputStream extends Readable {
     if (this._resDead) return;
 
     // retry if not all data has been fetched
-    if (this._bytesSoFar + this._initialOffset < this._contentLength) {
+    if (data == null && (this._bytesSoFar + this._initialOffset < this._contentLength)) {
       this._retry(new Error("received null data before end"));
       return true;
     }
